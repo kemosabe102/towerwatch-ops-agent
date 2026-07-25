@@ -86,10 +86,10 @@ it is "RAG is unjustified at 9 KB, and we are going to prove that with a number.
 - **Negative / trade-offs:** does not scale, by design. Content-level matching is
   unavailable — a symptom described in a section's body but not its heading is harder to
   find, partially mitigated by `full: true`.
-- **Security consideration:** runbook content flows verbatim into model context, making this
-  the repo's live tool-result injection surface. The v1 posture is a **trusted-authorship
-  boundary** — the runbook is repo-controlled. A seeded-injection test targets this path;
-  see [`../production-path.md`](../production-path.md) for the deferred threat model.
+- **Security consideration:** returning content verbatim makes this an injection surface.
+  The posture and the planned seeded-injection test are specified in
+  [`../design/06-get_runbook.md`](../design/06-get_runbook.md) ("Injection note"); the
+  deferred threat model is tracked in [`../production-path.md`](../production-path.md).
 - **Follow-ups:** Phase 3's retrieval comparison. If semantic retrieval measurably beats
   this, supersede with the numbers attached.
 

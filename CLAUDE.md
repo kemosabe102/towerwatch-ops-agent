@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+> **Budget: 110 lines / ~1,500 tokens** (limit: 150 lines, per
+> [`spec-ai-native-repo-layer.md`](docs/specs/spec-ai-native-repo-layer.md)). Measured
+> 2026-07-25. Deep context lives in `docs/` and loads on demand — this file stays a map,
+> never a manual. Re-measure when you edit it.
+
 Agent-facing guide. The user-facing README is imported below and is the source of truth
 for the project story, the three-phase map, and the toolchain — read it first, then come
 back here for the agent-only notes.
