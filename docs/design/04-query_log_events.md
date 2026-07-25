@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `site` | enum | required | `"standstill"` |
 | `start`, `end` | ISO-8601 | required | — |
-| `event_types` | list[enum], optional | enum derived from the known event vocabulary (metrics-inventory §10: `connection_down`, `service_restarted`, `metrics_push_failed`, …); default all | `["connection_down"]` |
+| `event_types` | list[enum], optional | enum derived from the known event vocabulary (TowerWatch repo's `docs/metrics-inventory.md` §10: `connection_down`, `service_restarted`, `metrics_push_failed`, …); default all | `["connection_down"]` |
 | `include_annotations` | bool | default `true` — Grafana outage annotations interleaved, marked by origin | — |
 | `page_size`, `page_token` | — | per conventions | — |
 

@@ -33,5 +33,6 @@ Unknown metric in group → actionable (valid names for that group), `retryable:
 
 ## Open questions
 
-- Exact group→metric mapping table (build-time, from metrics-inventory.md).
+- Exact group→metric mapping table (build-time, from the sibling TowerWatch repo's
+  `docs/metrics-inventory.md` — the domain source of truth; not duplicated here).
 - Max range and default page size — set after seeing real payload sizes in fixture.
