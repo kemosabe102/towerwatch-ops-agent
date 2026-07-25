@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# uv / virtualenv
+.venv/
+# uv.lock IS committed once the environment is first resolved — do not ignore it.
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.pyright/
+
+# Credentials — never commit (mirrors the towerwatch convention)
+credentials.py
+credentials.*.py
+
+# Env / editor
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
+
+# Local Claude Code overrides (project settings.json is committed; .local is not)
+.claude/settings.local.json

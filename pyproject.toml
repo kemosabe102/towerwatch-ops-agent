@@ -1,0 +1,50 @@
+[project]
+name = "towerwatch-ops-agent"
+version = "0.0.0"
+description = "An agent layer over TowerWatch: instrumented MCP server, eval harness, cost-aware router, and semantic tool retrieval."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Declared intent for the scaffold. Nothing is installed or locked this pass;
+# `uv sync` wires these up when Phase 1 begins. Versions are left unpinned here
+# and will be pinned in uv.lock once the environment is first resolved.
+dependencies = [
+    "fastmcp",            # MCP server framework (Phase 1)
+    "pydantic",           # tool input/output schemas with constraints + examples (Phase 1)
+    "opentelemetry-sdk",  # one span per tool call, day one (Phase 1)
+]
+
+[project.optional-dependencies]
+# Evals, benchmarking, and retrieval land in later phases; grouped so the base
+# server install stays lean. Populated as each phase is built.
+eval = []       # Phase 2 — golden-set + rubric harness
+retrieval = []  # Phase 3 — embeddings + vector store (chroma or sqlite-vec)
+dev = [
+    "ruff",
+    "pyright",
+    "pytest",
+]
+
+[project.scripts]
+# Phase 1 entry point — launches the MCP server over stdio. Not yet implemented.
+towerwatch-ops-agent = "towerwatch_ops_agent.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/towerwatch_ops_agent"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
