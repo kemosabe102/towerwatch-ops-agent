@@ -21,7 +21,7 @@ Duplicated rationale drifts silently.
 | [0006](0006-runbook-keyed-lookup-not-rag.md) | Runbook access as keyed lookup, not RAG | Accepted (2026-07-25) | Two-way |
 | [0007](0007-derive-enums-at-server-startup.md) | Enums derived from their sources at server startup | Accepted (2026-07-25) | Two-way |
 | [0008](0008-diagnose-rca-as-a-skill-not-a-tool.md) | Diagnosis as a skill, not a tool | Accepted (2026-07-25) | Two-way |
-| [0009](0009-baseline-reference-data-beyond-retention.md) | Baseline reference data beyond the retention window | **Proposed · 2 gates open** | Two-way |
+| [0009](0009-baseline-reference-data-beyond-retention.md) | Baseline reference data beyond the retention window | **Proposed · 1 gate open** | Two-way |
 
 ## Conventions
 

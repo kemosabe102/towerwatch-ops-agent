@@ -45,6 +45,22 @@ Any tool that can return unbounded data paginates: `page_size` (default small), 
 - Time: ISO-8601 with explicit offset; eval questions pin windows (Phase 2 stability rule).
 - `site` is an enum derived from configured sites at server startup (currently `standstill`, `home`) — same derive-don't-hardcode rule as the runbook keys.
 
+### The clock seam (`fixture_now`)
+
+"Now" is resolved through one seam with two sources: the system clock in live mode, and a
+frozen `fixture_now` timestamp read from the fixture manifest at startup in fixture mode
+(same derive-at-startup rule as the `site` enum — see [ADR-0007](../adr/0007-derive-enums-at-server-startup.md)
+and [`10-fixture-manifest.md`](10-fixture-manifest.md)).
+
+- **Not a tool parameter.** No def-token cost, no schema change, and no tool learns which
+  mode it is in — this preserves the core property of [ADR-0002](../adr/0002-dual-mode-data-access-via-protocol.md).
+- **Relative-window handling is identical in both modes.** Fixture mode must exercise the
+  default resolution path, not bypass it. A fixture that cannot run the default path
+  leaves the most-used production behavior untested — which is the divergence dual-mode
+  testing exists to prevent.
+- Absolute windows are unaffected: eval questions still pin them (stability rule above).
+  The seam matters for any input that resolves against "now."
+
 ## Annotations
 
 All tools `readOnly` except `run_speedtest` (non-read-only → host approval gate). Nothing is destructive.

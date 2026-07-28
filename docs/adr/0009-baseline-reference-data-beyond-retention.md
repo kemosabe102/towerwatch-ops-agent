@@ -1,6 +1,6 @@
 # Baseline reference data beyond the retention window
 
-- **Status:** Proposed · 2 gates open — review requested
+- **Status:** Proposed · 1 gate open — review requested
 - **Date:** 2026-07-25
 - **Deciders:** Anthony
 - **Reversibility:** **Two-way door.** A ledger is additive — an append-only side store that
@@ -12,9 +12,11 @@
 
 We recommend persisting **daily per-metric rollup aggregates to a small local store** — a
 baseline ledger — so `analyze_window`'s `anchored_trend` frame can see past the ~2-week
-live retention window, **conditional on two gates**: whether slow-drift detection is
-actually required (Gate 1) and whether the ledger must exist before Phase 2 freezes its
-golden set (Gate 2). If Gate 1 shows a ~13-day `self_baseline` answers the real questions,
+live retention window, **conditional on one remaining gate**: whether slow-drift detection
+is actually required (Gate 1). Gate 2 — whether the ledger must exist before Phase 2
+freezes its golden set — is **closed**: the curated-export fixture supplies its own
+reference data, so the ledger is deferred past Phase 2 as a live-mode-only enhancement.
+If Gate 1 shows a ~13-day `self_baseline` answers the real questions,
 the correct outcome is do-nothing at zero cost, and `anchored_trend` ships reporting
 `insufficient_evidence` honestly. If drift detection is required, the ledger is roughly a
 day of work and no new infrastructure.
@@ -40,7 +42,26 @@ pre-retention reference data? (Fixture mechanics: see Context.)
 supplies its own baselines, the ledger can be deferred past Phase 2 as a live-mode-only
 enhancement. If any eval question needs a real long-horizon baseline, the ledger must land
 before the corpus is frozen.
-**Status:** Open. Blocked on fixture curation, which decides what the eval corpus can ask.
+**Status:** **Closed — ledger deferred past Phase 2, live-mode-only enhancement.**
+
+The rule's two clauses do not apply symmetrically to the curated-export model
+([`../design/10-fixture-manifest.md`](../design/10-fixture-manifest.md)), so the reasoning
+is stated precisely rather than claiming both are met:
+
+- **Clause 2 is satisfied directly.** The fixture supplies its own reference data as daily
+  rollups, in this ADR's schema.
+- **Clause 1 — "pins all its windows inside retention" — does not apply as written.** It
+  presumes windows are read live, where retention bounds what is queryable. Fixture windows
+  are exports: the `reconstructed` provenance value exists precisely for windows whose raw
+  data has aged out. The clause's *intent* — that no eval question depends on data the
+  system cannot supply — is met by clause 2, since the fixture carries its own history
+  regardless of live retention.
+
+The one eval case touching long-horizon comparison is the `boundary` case, whose correct
+answer is `insufficient_evidence` — it needs the ledger *absent*, not present. Its positive
+control pairs on request shape rather than frame identity
+([`../design/11-eval-design.md`](../design/11-eval-design.md)), so no eval question
+requires a real long-horizon baseline.
 
 ## Context
 
@@ -65,6 +86,15 @@ Tests and evals run against a committed fixture
 contain whatever history its curator puts in it, including synthetic long-horizon
 baselines. This is why Gate 2 is a separate question from Gate 1: the ledger could be
 unnecessary for evals while still being necessary for live use.
+
+**Update (Gate 2 closed):** the fixture ships surrounding context as daily per-metric
+rollups using **this ADR's own schema** (count/mean/p50/p95/p99/max), because full 60 s
+resolution across a trailing period is not a committable git artifact. Two consequences:
+the fixture exercises the ledger's format before the ledger is built, and the rollup is
+labelled in the corpus as *context, not a steady-state baseline* — which is separately
+required because the site is seasonal and occupancy-driven
+([`../design/02-analyze_window.md`](../design/02-analyze_window.md), reference-window
+validity).
 
 ## Options
 
@@ -120,7 +150,8 @@ change. Gate 2 decides only its *timing* relative to Phase 2, not whether it is 
 ## Validation plan
 
 1. Answer Gate 1.
-2. Answer Gate 2.
+2. ~~Answer Gate 2.~~ **Done** — closed on the curated-export model; ledger deferred past
+   Phase 2.
 3. Baseline window length within retention — pick the trailing-window figure for
    `self_baseline` and record it as config.
 4. Anchor period selection, once the ledger exists — which fixed period is the reference.
@@ -128,8 +159,10 @@ change. Gate 2 decides only its *timing* relative to Phase 2, not whether it is 
 
 ## Follow-up work (not scoped here)
 
-- Fixture curation decides what the eval corpus can ask, and therefore answers Gate 2.
-  Tracked as the implementation-blocking design input before the first code slice.
+- ~~Fixture curation decides what the eval corpus can ask, and therefore answers Gate 2.~~
+  **Answered** — the manifest contract is
+  [`../design/10-fixture-manifest.md`](../design/10-fixture-manifest.md); curating the
+  corpus against it remains the implementation-blocking input before the first code slice.
 - Enterprise-scale comparison (Mimir/Thanos-style downsampled tiers) is recorded in
   [`../production-path.md`](../production-path.md).
 

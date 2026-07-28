@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-> **Budget: 110 lines / ~1,500 tokens** (limit: 150 lines, per
+> **Budget: 115 lines / ~1,600 tokens** (limit: 150 lines, per
 > [`spec-ai-native-repo-layer.md`](docs/specs/spec-ai-native-repo-layer.md)). Measured
-> 2026-07-25. Deep context lives in `docs/` and loads on demand — this file stays a map,
+> 2026-07-26. Deep context lives in `docs/` and loads on demand — this file stays a map,
 > never a manual. Re-measure when you edit it.
 
 Agent-facing guide. The user-facing README is imported below and is the source of truth
@@ -23,6 +23,11 @@ the specs describe as *to be built* — none of it exists on disk yet.
 [`docs/design/`](docs/design/) (the locked tool contracts) and [`docs/adr/`](docs/adr/)
 (the decisions behind them) — not from memory of "what the code probably does," and not
 from the Phase 1 spec's candidate tool table, which `docs/design/` supersedes.
+
+**`docs/specs/` is frozen.** Never edit a spec to reflect something learned later: the
+README's "requirements defined upfront" claim depends on them being unmodified, and a
+reader must be able to tell requirement from backfill. Learnings land in `docs/design/`
+(contract) or `docs/adr/` (decision), which already win on conflict.
 
 The README's [Status](README.md#status) section is the authoritative present-vs-deferred
 list. Keep it in sync when you land work.

@@ -15,7 +15,7 @@
 ## Response
 
 - Per-metric **distribution block**, both sides: `{sample_count, mean, p50, p95, p99, max, min, stddev}` — with delta and delta-% on each statistic, computed over the **comparable intersection** only. Mean-only comparison is malpractice on network data: the outliers *are* the story (a link with identical means and a 4× p99 is the degraded one), and tail-vs-median divergence is itself diagnostic (bufferbloat, bursts).
-- `not_comparable`: named list of metrics/groups present on one side only, with which side lacks them (the phone-vs-Pi case: phone lacks signal/hardware groups — say so, never silently narrow).
+- `not_comparable`: named list of metrics/groups present on one side only, with which side lacks them (the phone-vs-Pi case: phone lacks signal/hardware groups — say so, never silently narrow). The phone stays the real-world illustration, but the **fixture exercises this path via a deliberately absent metric group at a main site** — phone collection only happens during rare on-site visits, so the host is out of the corpus ([`10-fixture-manifest.md`](10-fixture-manifest.md)).
 - `alignment_notes`: window durations, sample counts per side (asymmetric density flagged — a 2-sample side vs a 2,000-sample side is not a fair mean).
 - `data_status`, `coverage_notes` per conventions.
 

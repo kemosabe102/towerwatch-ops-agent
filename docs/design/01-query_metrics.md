@@ -24,6 +24,7 @@ Series (metric → [timestamp, value] pairs, downsampled per `step`), `data_stat
 - **Metric-group enum is the vocabulary surface.** 74 metric names never appear in the def — groups map to the inventory's sections; full names are discoverable via results and error messages (progressive disclosure inside a schema).
 - Auto-downsampling: a 2-week query at 60 s resolution is ~20k points/metric — never ship that; default `step` scales with range. Raw resolution requires explicitly small windows.
 - The group enum + per-group name errors make this tool self-teaching: a wrong guess returns the valid vocabulary for exactly one group, not all 74 names.
+- **The metric-group enum is the canonical owner of `baseline_class`** — the server-side attribute deciding whether `self_baseline` is a valid reference frame for a group. It is not model-visible and costs no def tokens here; the assignments table and its rationale live in [`02-analyze_window.md`](02-analyze_window.md#reference-window-validity-baseline_class).
 
 ## Errors
 

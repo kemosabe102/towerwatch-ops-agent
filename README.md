@@ -102,6 +102,10 @@ decisions are complete and committed; no code has been written yet. Present:
 - [x] The build plan and all four requirement specs in [`docs/specs/`](docs/specs/)
 - [x] **Locked tool contracts** — [`docs/design/`](docs/design/) 00–09: conventions, seven
       tool docs, skills interfaces, span schema
+- [x] **Fixture manifest + eval design** — [`10-fixture-manifest.md`](docs/design/10-fixture-manifest.md)
+      (curated-export model, provenance, frozen clock, answer key) and
+      [`11-eval-design.md`](docs/design/11-eval-design.md) (positive-control pairing,
+      answer-key timing)
 - [x] **ADRs** — [`docs/adr/`](docs/adr/), the decisions behind the tool surface
 - [x] PR template requesting verification receipts
 
