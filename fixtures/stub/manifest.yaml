@@ -1,0 +1,57 @@
+# Stub fixture — plumbing for slice one, NOT a curated incident corpus.
+#
+# Exists so FixtureClient and query_metrics can be built and tested before the real
+# corpus is generated. The real corpus (docs/design/10-fixture-manifest.md) replaces
+# this once the series-file format is proven by working code.
+#
+# Values are real samples from the July 2026 standstill export, but the windows are
+# assembled rather than exported — hence `provenance: synthetic`. Provenance is never
+# silently omitted, even for throwaway plumbing.
+
+fixture_now: "2026-07-14T08:00:00-07:00"
+generated_at: "2026-07-27T00:00:00-07:00"
+pseudonym_scheme: "none_required — no hostnames, IPs, or resolver addresses in this data"
+
+windows:
+  - id: stub_standstill_window
+    site: standstill
+    start: "2026-07-14T00:00:00-07:00"
+    end: "2026-07-14T01:00:00-07:00"
+    role: reference
+    provenance: synthetic
+    resolution: "10m"
+    payload: windows/stub_standstill_window.json
+    groups_present: [latency]
+    groups_absent: []
+    expected_findings:
+      overall: n/a
+      layers: {}
+      causal_order: []
+      verdict: >-
+        Stub fixture for slice-one plumbing. Not a curated incident and not scored by
+        any eval — the real answer key lives in the generated corpus.
+
+  # Second site, no payload: exercises the not_collected path. `home` has no cellular
+  # modem, so signal and hardware are absent for a real physical reason rather than a
+  # gap in curation. not_collected short-circuits before any payload read, so this
+  # record needs no series file.
+  - id: stub_home_window
+    site: home
+    start: "2026-07-14T00:00:00-07:00"
+    end: "2026-07-14T01:00:00-07:00"
+    role: reference
+    provenance: synthetic
+    resolution: "10m"
+    payload: null
+    groups_present: []
+    groups_absent:
+      - group: signal
+        reason: not_collected_at_site
+      - group: hardware
+        reason: not_collected_at_site
+    expected_findings:
+      overall: n/a
+      layers: {}
+      causal_order: []
+      verdict: >-
+        Sparse-coverage stub — home collects no cellular metrics.
