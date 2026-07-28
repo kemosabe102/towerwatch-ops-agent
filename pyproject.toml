@@ -6,13 +6,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
-# Declared intent for the scaffold. Nothing is installed or locked this pass;
-# `uv sync` wires these up when Phase 1 begins. Versions are left unpinned here
-# and will be pinned in uv.lock once the environment is first resolved.
+# Floors, not exact pins — uv.lock holds the resolved versions.
 dependencies = [
-    "fastmcp",            # MCP server framework (Phase 1)
-    "pydantic",           # tool input/output schemas with constraints + examples (Phase 1)
-    "opentelemetry-sdk",  # one span per tool call, day one (Phase 1)
+    "fastmcp>=2.0,<3.0",            # MCP server framework (Phase 1)
+    "pydantic>=2.7,<3.0",           # tool schemas with constraints + examples (Phase 1)
+    "opentelemetry-api>=1.25,<2.0", # tool code imports the api, not the sdk
+    "opentelemetry-sdk>=1.25,<2.0", # one span per tool call, day one (Phase 1)
+    "pyyaml>=6.0,<7.0",             # fixture manifest parsing
 ]
 
 [project.optional-dependencies]
@@ -24,6 +24,9 @@ dev = [
     "ruff",
     "pyright",
     "pytest",
+    "pytest-asyncio>=1.4", # the MCP client session tests are async
+    "types-pyyaml",       # pyyaml ships no inline types
+    "anthropic>=0.34",    # def-token measurement only — never imported by the server
 ]
 
 [project.scripts]
@@ -48,3 +51,4 @@ typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
