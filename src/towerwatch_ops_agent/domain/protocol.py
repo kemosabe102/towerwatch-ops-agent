@@ -1,9 +1,12 @@
 """The data-access seam (ADR-0002).
 
-`GrafanaCloudClient` (live) and `FixtureClient` (curated) satisfy this Protocol.
+`GrafanaCloudClient` (live) and `FixtureClient` (curated) are the two intended
+implementations of this Protocol.
 No tool may import either concrete class — tools depend on `DataClient` only, which
-is what keeps a tool from learning which mode it is running in. A test in
-`tests/tools/test_query_metrics.py` asserts this structurally rather than by convention.
+is what keeps a tool from learning which mode it is running in. Neither implementation
+lands in this PR: the Protocol is defined first, deliberately, so the seam exists before
+anything can be written against a concrete class. Once the tool layer lands it carries an
+AST-level import guard asserting this structurally rather than by convention.
 """
 
 from __future__ import annotations
@@ -33,6 +36,11 @@ class UnknownMetricError(ValueError):
         )
 
 
+# The statuses that assert an absence of data. Pagination and populated series are
+# both meaningless alongside them, which is what `MetricSeriesResult` enforces below.
+_NO_DATA_STATUSES = frozenset({DataStatus.not_collected, DataStatus.empty_window})
+
+
 @dataclass(frozen=True)
 class SeriesPoint:
     """One sample. `value` is in the metric's native unit — units live in metric names."""
@@ -55,6 +63,37 @@ class MetricSeriesResult:
     coverage_notes: list[str] = field(default_factory=list)
     truncated: bool = False
     next_page_token: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject states that contradict `data_status`.
+
+        The whole contract rests on a model trusting `data_status` over the shape of
+        `metrics`. If an implementation can return `not_collected` alongside populated
+        series, that trust is misplaced and the failure is silent — the model reads
+        "no evidence" and sees numbers, or reads numbers and is told there is no
+        evidence. `FixtureClient` gets this right by hand today; ADR-0002 promises a
+        second implementation, and this makes the invariant a property of the type
+        rather than of one author's discipline.
+
+        Raising here (rather than correcting) is deliberate: a contradiction means the
+        client has a bug, and quietly picking one of the two claims would hide it.
+        """
+        if self.data_status in _NO_DATA_STATUSES and self.metrics:
+            raise ValueError(
+                f"data_status={self.data_status.value!r} means no data, but metrics "
+                f"carries {sorted(self.metrics)}. A model reading this envelope would "
+                "be told there is no evidence while being handed numbers."
+            )
+        if self.next_page_token is not None and not self.truncated:
+            raise ValueError(
+                "next_page_token is set but truncated is False — a continuation token "
+                "over a complete result would make a caller page forever."
+            )
+        if self.truncated and self.data_status in _NO_DATA_STATUSES:
+            raise ValueError(
+                f"truncated=True with data_status={self.data_status.value!r} — there is "
+                "nothing to continue paging through."
+            )
 
 
 @runtime_checkable
