@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from typing import TypedDict
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("towerwatch_ops_agent")
 
@@ -37,6 +38,15 @@ class SpanMetrics(TypedDict, total=False):
     error_type: str
 
 
+# TODO(retry-sli): `09-observability-spans.md` defines a "retry rate per tool and per
+# error_type" SLI, and `tool.retry` is its slot. Nothing computes it yet: deciding
+# whether a call is a retry needs task-scoped history ("has this tool already errored
+# under this task.id"), which is server-middleware state and deliberately not owned
+# here — a per-call context manager has no business keeping a call log. The attribute
+# defaults to False until that lands, so the SLI currently reads as a flat 0%. Feed it
+# where task_id is tracked, not by giving this module memory.
+
+
 @contextmanager
 def tool_span(
     *,
@@ -53,7 +63,19 @@ def tool_span(
     dashboard.
     """
     metrics: SpanMetrics = {}
-    with tracer.start_as_current_span(SPAN_NAME) as span:
+    # `record_exception=False` is the load-bearing argument here, not a default worth
+    # keeping. OpenTelemetry otherwise attaches an `exception` event carrying the
+    # message and full stack trace, which routes straight around the SpanMetrics
+    # whitelist — and exception messages in this codebase do carry payload-shaped
+    # data (`UnknownMetricError` lists a group's metric names). The error *class* is
+    # recorded below, which is the part a dashboard needs; the message is the part
+    # that must not leave the process.
+    # `set_status_on_exception` is off for the same reason: OTel fills the status
+    # description with `f"{type}: {message}"`, message included. The status itself is
+    # still set to ERROR below — the signal a backend reads, without the text.
+    with tracer.start_as_current_span(
+        SPAN_NAME, record_exception=False, set_status_on_exception=False
+    ) as span:
         span.set_attribute("tool.name", tool_name)
         span.set_attribute("mode", mode)
         for key, value in (
@@ -71,6 +93,8 @@ def tool_span(
         except Exception as exc:
             span.set_attribute("tool.success", False)
             span.set_attribute("tool.error_type", metrics.get("error_type", type(exc).__name__))
+            # Status carries the class only. Nothing here interpolates `exc` itself.
+            span.set_status(Status(StatusCode.ERROR, type(exc).__name__))
             raise
         else:
             span.set_attribute("tool.success", "error_type" not in metrics)
