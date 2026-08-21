@@ -1,4 +1,11 @@
-"""Span emission and the no-secrets boundary."""
+"""`tool_span`'s own contract — no tool required.
+
+These drive the context manager directly rather than through a real tool, so the
+telemetry layer is verifiable in the PR that introduces it. The assertions that a
+*specific* tool populates its span correctly belong to that tool's own tests
+(`tests/tools/test_query_metrics_spans.py`), where a wrong `data_status` is the
+tool's bug rather than this module's.
+"""
 
 from __future__ import annotations
 
@@ -8,10 +15,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from towerwatch_ops_agent.domain.fixture_client import FixtureClient
-from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup, build_site_enum
 from towerwatch_ops_agent.telemetry import spans as spans_module
-from towerwatch_ops_agent.tools.query_metrics import build_request_model, query_metrics
+from towerwatch_ops_agent.telemetry.spans import SPAN_NAME, tool_span
 
 
 @pytest.fixture
@@ -23,85 +28,106 @@ def exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
     return exporter
 
 
-def _call(fixture_client: FixtureClient, **overrides):
-    model = build_request_model(build_site_enum(fixture_client.sites))
-    params = {
-        "site": "standstill",
-        "metric_group": MetricGroup.latency,
-        "start": "2026-07-14T00:00:00-07:00",
-        "end": "2026-07-14T01:00:00-07:00",
-    }
-    params.update(overrides)
-    return query_metrics(model(**params), client=fixture_client, mode="fixture")
+def _attrs(exporter: InMemorySpanExporter, index: int = 0) -> dict:
+    return dict(exporter.get_finished_spans()[index].attributes or {})
 
 
-def test_span_carries_the_required_attributes(
-    exporter: InMemorySpanExporter, fixture_client: FixtureClient
-) -> None:
-    _call(fixture_client)
+def test_identity_attributes_are_always_present(exporter: InMemorySpanExporter) -> None:
+    with tool_span(tool_name="towerwatch_query_metrics", mode="fixture", site="standstill"):
+        pass
     (span,) = exporter.get_finished_spans()
     attrs = dict(span.attributes or {})
 
-    assert span.name == "towerwatch.tool_call"
+    assert span.name == SPAN_NAME
     assert attrs["tool.name"] == "towerwatch_query_metrics"
-    assert attrs["tool.success"] is True
     assert attrs["mode"] == "fixture"
     assert attrs["site"] == "standstill"
-    assert attrs["tool.data_status"] == DataStatus.ok.value
+    assert attrs["tool.success"] is True
     assert isinstance(attrs["tool.duration_ms"], int)
-
-    output_bytes = attrs["tool.output_bytes"]
-    assert isinstance(output_bytes, int) and output_bytes > 0
-    assert attrs["tool.output_tokens_est"] == output_bytes // 4
     assert attrs["tool.retry"] is False
 
 
-def test_span_records_data_status_for_absent_groups(
-    exporter: InMemorySpanExporter, fixture_client: FixtureClient
-) -> None:
-    """Coverage regressions show up as a data_status mix shift — so it must be on the span."""
-    _call(fixture_client, site="home", metric_group=MetricGroup.signal)
-    (span,) = exporter.get_finished_spans()
-    assert dict(span.attributes or {})["tool.data_status"] == DataStatus.not_collected.value
+def test_mode_separates_fixture_from_live_traffic(exporter: InMemorySpanExporter) -> None:
+    """Fixture and live traffic are never mixed in a dashboard, so mode is mandatory."""
+    with tool_span(tool_name="t", mode="fixture"):
+        pass
+    with tool_span(tool_name="t", mode="live"):
+        pass
+    assert [_attrs(exporter, i)["mode"] for i in (0, 1)] == ["fixture", "live"]
 
 
-def test_error_marks_success_false_with_a_machine_class(
-    exporter: InMemorySpanExporter, fixture_client: FixtureClient
+def test_optional_identity_attributes_are_omitted_when_absent(
+    exporter: InMemorySpanExporter,
 ) -> None:
-    _call(fixture_client, metrics=["rtt_avg_bogus"])
-    (span,) = exporter.get_finished_spans()
-    attrs = dict(span.attributes or {})
+    """Absent is absent — never the string 'None', which would pollute a group-by."""
+    with tool_span(tool_name="t", mode="fixture"):
+        pass
+    attrs = _attrs(exporter)
+    for key in ("site", "task.id", "session.id", "model"):
+        assert key not in attrs
+
+
+def test_metrics_written_by_the_caller_land_on_the_span(
+    exporter: InMemorySpanExporter,
+) -> None:
+    with tool_span(tool_name="t", mode="fixture") as metrics:
+        metrics["data_status"] = "ok"
+        metrics["input_bytes"] = 40
+        metrics["output_bytes"] = 120
+    attrs = _attrs(exporter)
+
+    assert attrs["tool.data_status"] == "ok"
+    assert attrs["tool.input_bytes"] == 40
+    assert attrs["tool.output_bytes"] == 120
+
+
+def test_output_tokens_are_estimated_from_bytes(exporter: InMemorySpanExporter) -> None:
+    """Labeled an estimate in the schema; the bytes/4 heuristic is the contract's own."""
+    with tool_span(tool_name="t", mode="fixture") as metrics:
+        metrics["output_bytes"] = 400
+    assert _attrs(exporter)["tool.output_tokens_est"] == 100
+
+
+def test_page_index_recorded_only_when_paging(exporter: InMemorySpanExporter) -> None:
+    """Deep paging is a payload-design smell; it is only visible if the attribute is set."""
+    with tool_span(tool_name="t", mode="fixture"):
+        pass
+    with tool_span(tool_name="t", mode="fixture") as metrics:
+        metrics["page_index"] = 1
+
+    assert "tool.page_index" not in _attrs(exporter, 0)
+    assert _attrs(exporter, 1)["tool.page_index"] == 1
+
+
+def test_error_type_marks_the_span_unsuccessful(exporter: InMemorySpanExporter) -> None:
+    """A tool that returns an error envelope never raises, so success comes from the dict."""
+    with tool_span(tool_name="t", mode="fixture") as metrics:
+        metrics["error_type"] = "unknown_metric"
+    attrs = _attrs(exporter)
+
     assert attrs["tool.success"] is False
     assert attrs["tool.error_type"] == "unknown_metric"
 
 
-def test_span_attributes_contain_no_payload_values(
-    exporter: InMemorySpanExporter, fixture_client: FixtureClient
+def test_an_escaping_exception_is_recorded_and_reraised(
+    exporter: InMemorySpanExporter,
 ) -> None:
-    """No measurement value or metric name may reach telemetry — sizes and classes only.
+    """Nothing should escape a tool, but if it does the span must not claim success."""
+    with pytest.raises(RuntimeError), tool_span(tool_name="t", mode="fixture"):
+        raise RuntimeError("boom")
+    attrs = _attrs(exporter)
 
-    Belt-and-suspenders: the primary control is that `tool_span` only ever receives
-    primitives from a fixed TypedDict, so there is no path for a payload value to
-    arrive. This test would catch someone widening that dict carelessly.
-    """
-    _call(fixture_client)
-    (span,) = exporter.get_finished_spans()
-    rendered = " ".join(f"{k}={v}" for k, v in dict(span.attributes or {}).items())
-
-    for payload_value in ("101", "131", "rtt_avg_google", "pkt_loss_google"):
-        assert payload_value not in rendered, f"{payload_value!r} leaked into span attributes"
+    assert attrs["tool.success"] is False
+    assert attrs["tool.error_type"] == "RuntimeError"
 
 
-def test_page_index_recorded_only_when_paging(
-    exporter: InMemorySpanExporter, fixture_client: FixtureClient
+def test_duration_is_recorded_even_when_the_body_raises(
+    exporter: InMemorySpanExporter,
 ) -> None:
-    """Deep paging is a payload-design smell; it is only visible if the attribute is set."""
-    first = _call(fixture_client, step="10m", page_size=4)
-    _call(fixture_client, step="10m", page_size=4, page_token=first.next_page_token)
-    unpaged, paged = exporter.get_finished_spans()
-
-    assert "tool.page_index" not in dict(unpaged.attributes or {})
-    assert dict(paged.attributes or {})["tool.page_index"] == 1
+    """A latency SLI blind to failures would hide the slowest calls in the system."""
+    with pytest.raises(RuntimeError), tool_span(tool_name="t", mode="fixture"):
+        raise RuntimeError("boom")
+    assert isinstance(_attrs(exporter)["tool.duration_ms"], int)
 
 
 def test_span_metrics_keys_are_closed() -> None:
@@ -114,6 +140,33 @@ def test_span_metrics_keys_are_closed() -> None:
         "retry",
         "error_type",
     }
+
+
+def test_no_attribute_carries_a_payload_shaped_value(
+    exporter: InMemorySpanExporter,
+) -> None:
+    """The structural no-secrets control, asserted end to end.
+
+    `tool_span` accepts primitives from a fixed TypedDict, so there is no path for a
+    measurement value or metric name to reach `set_attribute`. This pins that every
+    attribute is a size, a class, or an identity — never contents.
+    """
+    with tool_span(tool_name="t", mode="fixture", site="standstill") as metrics:
+        metrics["data_status"] = "ok"
+        metrics["output_bytes"] = 120
+
+    allowed = {
+        "tool.name",
+        "mode",
+        "site",
+        "tool.success",
+        "tool.duration_ms",
+        "tool.retry",
+        "tool.data_status",
+        "tool.output_bytes",
+        "tool.output_tokens_est",
+    }
+    assert set(_attrs(exporter)) <= allowed
 
 
 def test_tracer_is_reset() -> None:
