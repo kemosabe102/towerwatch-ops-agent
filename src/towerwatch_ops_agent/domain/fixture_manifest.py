@@ -97,7 +97,10 @@ def load_series(payload_path: Path) -> dict[str, list[SeriesPoint]]:
         raw = json.load(fh)
     return {
         name: sorted(
-            (SeriesPoint(ts=datetime.fromisoformat(ts), value=float(value)) for ts, value in points),
+            (
+                SeriesPoint(ts=datetime.fromisoformat(ts), value=float(value))
+                for ts, value in points
+            ),
             key=lambda point: point.ts,
         )
         for name, points in raw.items()

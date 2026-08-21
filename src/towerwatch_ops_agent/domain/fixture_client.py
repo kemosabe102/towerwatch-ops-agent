@@ -144,7 +144,9 @@ class FixtureClient:
             known = set(collected)
             unknown = [name for name in metrics if name not in known]
             if unknown:
-                raise UnknownMetricError(metric_group=metric_group, unknown=unknown, valid=sorted(known))
+                raise UnknownMetricError(
+                    metric_group=metric_group, unknown=unknown, valid=sorted(known)
+                )
             collected = {name: collected[name] for name in metrics}
 
         step_value = step or default_step(start, end)

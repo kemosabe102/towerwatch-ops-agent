@@ -109,9 +109,7 @@ def test_pagination_returns_token_and_resumes(fixture_client: FixtureClient) -> 
     assert first.next_page_token is not None
     assert len(first.metrics["rtt_avg_google"]) == 4
 
-    second = _query(
-        fixture_client, step="10m", page_size=4, page_token=first.next_page_token
-    )
+    second = _query(fixture_client, step="10m", page_size=4, page_token=first.next_page_token)
     assert not second.truncated
     assert second.next_page_token is None
     assert len(second.metrics["rtt_avg_google"]) == 2

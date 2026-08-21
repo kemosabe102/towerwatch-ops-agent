@@ -46,7 +46,9 @@ def resolve_window(start: datetime, end: datetime, *, now: datetime) -> tuple[da
     if end <= start:
         raise ValueError("end must be after start")
     if start > now:
-        raise ValueError(f"Window starts in the future: start={start.isoformat()} > now={now.isoformat()}")
+        raise ValueError(
+            f"Window starts in the future: start={start.isoformat()} > now={now.isoformat()}"
+        )
     return start, end
 
 
