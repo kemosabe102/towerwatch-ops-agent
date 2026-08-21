@@ -43,9 +43,7 @@ def test_ok_response_carries_series(request_model, fixture_client: FixtureClient
 def test_not_collected_surfaces_through_the_tool(
     request_model, fixture_client: FixtureClient
 ) -> None:
-    response = _call(
-        request_model, fixture_client, site="home", metric_group=MetricGroup.signal
-    )
+    response = _call(request_model, fixture_client, site="home", metric_group=MetricGroup.signal)
     assert response.data_status is DataStatus.not_collected
     assert response.series == {}
 
@@ -106,9 +104,7 @@ def test_unknown_metric_returns_actionable_retryable_error(
     assert "rtt_avg_google" in (response.error.suggested_next_call or "")
 
 
-def test_future_window_is_an_invalid_request(
-    request_model, fixture_client: FixtureClient
-) -> None:
+def test_future_window_is_an_invalid_request(request_model, fixture_client: FixtureClient) -> None:
     """fixture_now is 2026-07-14T08:00; a window past it cannot be satisfied."""
     response = _call(
         request_model,
@@ -167,9 +163,7 @@ def test_pagination_round_trips_through_the_tool(
     assert len(second.series["rtt_avg_google"]) == 2
 
 
-def test_malformed_page_token_is_actionable(
-    request_model, fixture_client: FixtureClient
-) -> None:
+def test_malformed_page_token_is_actionable(request_model, fixture_client: FixtureClient) -> None:
     response = _call(request_model, fixture_client, page_token="not-a-real-token")
     assert response.data_status is DataStatus.error
     assert response.error is not None

@@ -73,9 +73,11 @@ def main() -> int:
     # tool def alone, not the def plus the boilerplate every call carries.
     from anthropic import Anthropic
 
-    baseline = Anthropic().messages.count_tokens(
-        model=MODEL, messages=[{"role": "user", "content": "."}]
-    ).input_tokens
+    baseline = (
+        Anthropic()
+        .messages.count_tokens(model=MODEL, messages=[{"role": "user", "content": "."}])
+        .input_tokens
+    )
 
     print(f"{'tool':<34}{'tokens':>8}{'target':>8}{'delta':>8}")
     print("-" * 58)
