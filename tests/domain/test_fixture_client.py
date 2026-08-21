@@ -8,8 +8,10 @@ rather than by "the result was empty".
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
+import yaml
 
 from towerwatch_ops_agent.domain.fixture_client import FixtureClient
 from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup
@@ -158,3 +160,67 @@ def test_now_is_stable_across_calls(fixture_client: FixtureClient) -> None:
 
 def test_sites_are_derived_from_the_corpus(fixture_client: FixtureClient) -> None:
     assert set(fixture_client.sites) == {"standstill", "home"}
+
+
+def test_absence_in_one_window_does_not_mask_data_in_another(
+    tmp_path: Path, stub_manifest_path: Path
+) -> None:
+    """A site that collects a group in *any* window collects it.
+
+    Regression: the absence check returned on the first window declaring the group
+    absent, discarding real data from a sibling window. That claimed "no evidence"
+    while evidence sat in the corpus — the grounding failure in its worst direction,
+    because a model reads `not_collected` as "I cannot tell" and moves on.
+    """
+    raw = yaml.safe_load(stub_manifest_path.read_text(encoding="utf-8"))
+    present = [w for w in raw["windows"] if w["site"] == "standstill"]
+    offline = dict(present[0])
+    offline["id"] = "standstill_probe_offline"
+    offline["payload"] = None
+    offline["groups_present"] = []
+    offline["groups_absent"] = [{"group": "latency", "reason": "probe offline this window"}]
+    raw["windows"] = present + [offline]
+
+    corpus = tmp_path / "windows"
+    corpus.mkdir()
+    for window in present:
+        if window["payload"]:
+            source = stub_manifest_path.parent / window["payload"]
+            (tmp_path / window["payload"]).write_text(
+                source.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+    manifest = tmp_path / "manifest.yaml"
+    manifest.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    result = _query(FixtureClient(manifest))
+    assert result.data_status is DataStatus.ok
+    assert len(result.metrics["rtt_avg_google"]) == 6
+
+
+def test_page_token_past_the_end_is_rejected(fixture_client: FixtureClient) -> None:
+    """Regression: a stale token returned `ok` with zero points and no note.
+
+    "Success, here is nothing" is indistinguishable from a true negative to a model.
+    An unusable token is the caller's error and has to say so.
+    """
+    from towerwatch_ops_agent.domain.fixture_client import _encode_page_token
+
+    with pytest.raises(ValueError, match="past the end"):
+        _query(fixture_client, step="10m", page_size=4, page_token=_encode_page_token(9999))
+
+
+def test_downsample_never_emits_a_bucket_before_the_window(
+    fixture_client: FixtureClient,
+) -> None:
+    """Buckets stay inside the requested window.
+
+    `downsample` floors a negative offset toward minus infinity, so a point before
+    `origin` would land in a bucket stamped earlier than the window start. The client
+    filters to `start <= ts < end` before bucketing, which makes that unreachable —
+    pinned here so a refactor that moves the filter is caught.
+    """
+    start = datetime.fromisoformat("2026-07-14T00:30:00-07:00")
+    end = datetime.fromisoformat("2026-07-14T01:00:00-07:00")
+    result = _query(fixture_client, start=start, end=end, step="10m")
+    for points in result.metrics.values():
+        assert all(start <= point.ts < end for point in points)

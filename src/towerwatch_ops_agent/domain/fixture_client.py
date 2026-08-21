@@ -100,35 +100,37 @@ class FixtureClient:
                 coverage_notes=[f"No fixture windows exist for site {site!r}."],
             )
 
-        # Absence is checked before any payload read — the reason is documented data,
-        # not an inference from an empty result. This is the load-bearing branch:
-        # `not_collected` means no evidence, and must never look like `empty_window`.
-        for window in windows:
-            reason = window.absent_reason(metric_group)
-            if reason is not None:
-                return MetricSeriesResult(
-                    metrics={},
-                    data_status=DataStatus.not_collected,
-                    coverage_notes=[
-                        (
-                            f"Site {site!r} does not collect metric group "
-                            f"{metric_group.value!r} ({reason}). No evidence — "
-                            f"absence here is not a healthy reading."
-                        )
-                    ],
-                )
-
+        # Absence is decided across every window for the site, never by the first one
+        # that happens to declare it. A site whose probe was offline for one window but
+        # collecting in another does collect the group, and returning `not_collected`
+        # there would claim "no evidence" while evidence sits in the corpus — the
+        # grounding failure this envelope exists to prevent, in its worst direction.
+        #
+        # Reasons are still read from documented data rather than inferred from an
+        # empty result, which is what keeps `not_collected` distinct from
+        # `empty_window`.
         collecting = [w for w in windows if metric_group in w.groups_present]
         if not collecting:
+            reasons = [
+                reason
+                for window in windows
+                if (reason := window.absent_reason(metric_group)) is not None
+            ]
+            if reasons:
+                note = (
+                    f"Site {site!r} does not collect metric group "
+                    f"{metric_group.value!r} ({'; '.join(dict.fromkeys(reasons))}). "
+                    "No evidence — absence here is not a healthy reading."
+                )
+            else:
+                note = (
+                    f"Metric group {metric_group.value!r} is not present in the fixture "
+                    f"for site {site!r}, and no reason is recorded for its absence."
+                )
             return MetricSeriesResult(
                 metrics={},
                 data_status=DataStatus.not_collected,
-                coverage_notes=[
-                    (
-                        f"Metric group {metric_group.value!r} is not present in the fixture "
-                        f"for site {site!r}, and no reason is recorded for its absence."
-                    )
-                ],
+                coverage_notes=[note],
             )
 
         # Collected here — so an empty result from this point on is a true negative.
@@ -169,6 +171,18 @@ class FixtureClient:
             )
 
         offset = _decode_page_token(page_token) if page_token else 0
+        longest = max((len(points) for points in downsampled.values()), default=0)
+        if offset >= longest:
+            # A token past the end would otherwise return `ok` with zero points and no
+            # note — "success, here is nothing", which reads as an absence of data
+            # rather than as a bad request. An invalid token is the caller's error and
+            # has to say so, because the one thing this envelope may never do is let
+            # emptiness look like an answer.
+            raise ValueError(
+                f"page_token is past the end of the result: offset {offset} of "
+                f"{longest} points. Re-issue the original request without a "
+                "page_token to start over."
+            )
         paged, truncated, next_token = _paginate(downsampled, offset=offset, page_size=page_size)
         if truncated:
             coverage_notes.append(
