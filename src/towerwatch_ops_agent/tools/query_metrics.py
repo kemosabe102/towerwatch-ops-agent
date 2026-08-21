@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup
 from towerwatch_ops_agent.domain.protocol import DataClient, UnknownMetricError
@@ -176,22 +176,53 @@ def query_metrics(request: Any, *, client: DataClient, mode: str) -> QueryMetric
         except Exception as exc:  # noqa: BLE001
             response = _error_response(exc)
         else:
-            response = QueryMetricsResponse(
-                data_status=result.data_status,
-                series={
-                    name: [SeriesPointOut(ts=p.ts, value=p.value) for p in points]
-                    for name, points in result.metrics.items()
-                },
-                coverage_notes=result.coverage_notes,
-                truncated=result.truncated,
-                next_page_token=result.next_page_token,
-            )
+            # Response construction is inside the guard, not in an `else:`. Validating
+            # the client's points is itself a failure point — `SeriesPoint` is a plain
+            # dataclass with no validation, so a `DataClient` may hand back a sample
+            # Pydantic rejects. `FixtureClient` coerces with float() at load and cannot
+            # trip this; ADR-0002's `GrafanaCloudClient` reads a live API, which is
+            # exactly where a malformed sample comes from. Left in an `else:` that
+            # failure escaped as a bare ValidationError with no envelope at all.
+            try:
+                response = QueryMetricsResponse(
+                    data_status=result.data_status,
+                    series={
+                        name: [SeriesPointOut(ts=p.ts, value=p.value) for p in points]
+                        for name, points in result.metrics.items()
+                    },
+                    coverage_notes=result.coverage_notes,
+                    truncated=result.truncated,
+                    next_page_token=result.next_page_token,
+                )
+            except ValidationError as exc:
+                response = _malformed_series_response(exc)
 
         metrics["data_status"] = response.data_status.value
         metrics["output_bytes"] = len(response.model_dump_json())
         if response.error is not None:
             metrics["error_type"] = response.error.error_type
         return response
+
+
+def _malformed_series_response(exc: ValidationError) -> QueryMetricsResponse:
+    """The data client returned a sample this tool cannot represent.
+
+    Server-side data quality, not a caller mistake — so `internal_error` and not
+    retryable, and the validation detail goes to the operator's log rather than to the
+    model, which can do nothing with it.
+    """
+    logger.error("DataClient returned a sample that failed validation: %s", exc)
+    return QueryMetricsResponse(
+        data_status=DataStatus.error,
+        error=ToolError(
+            error_type="internal_error",
+            message=(
+                "The data source returned a sample this tool could not read. "
+                "This is not a problem with your request and retrying will not help."
+            ),
+            retryable=False,
+        ),
+    )
 
 
 def _error_response(exc: Exception) -> QueryMetricsResponse:

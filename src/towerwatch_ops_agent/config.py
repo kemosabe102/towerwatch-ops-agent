@@ -33,7 +33,16 @@ class ServerConfig:
             raise ValueError(
                 f"TOWERWATCH_MODE must be {MODE_FIXTURE!r} or {MODE_LIVE!r}, got {mode!r}"
             )
-        manifest = Path(
-            os.environ.get("TOWERWATCH_FIXTURE_MANIFEST", str(DEFAULT_FIXTURE_MANIFEST))
-        )
+        raw_manifest = os.environ.get("TOWERWATCH_FIXTURE_MANIFEST")
+        manifest = Path(raw_manifest) if raw_manifest else DEFAULT_FIXTURE_MANIFEST
+        # Named the same way TOWERWATCH_MODE names itself above. Without this the
+        # server dies on a bare FileNotFoundError that never mentions the variable
+        # that produced the path, leaving an operator to guess which of the two
+        # settings is wrong.
+        if mode == MODE_FIXTURE and not manifest.is_file():
+            source = "TOWERWATCH_FIXTURE_MANIFEST" if raw_manifest else "the default location"
+            raise ValueError(
+                f"Fixture manifest not found at {str(manifest)!r} (from {source}). "
+                "Fixture mode cannot start without a corpus."
+            )
         return cls(mode=mode, fixture_manifest=manifest)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from pydantic import ValidationError
 
 from towerwatch_ops_agent.domain.fixture_client import FixtureClient, _encode_page_token
 from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup, build_site_enum
+from towerwatch_ops_agent.domain.protocol import MetricSeriesResult
 from towerwatch_ops_agent.tools import query_metrics as query_metrics_module
 from towerwatch_ops_agent.tools.query_metrics import (
     _error_response,
@@ -245,3 +247,49 @@ def test_every_request_field_documents_an_example(fixture_client: FixtureClient)
         if "example" not in (field.description or "").lower()
     ]
     assert not missing, f"Request fields with no example: {missing}"
+
+
+def test_a_malformed_sample_from_the_client_still_returns_an_envelope(
+    request_model,
+) -> None:
+    """Regression: response construction sat in an `else:`, outside the try.
+
+    `SeriesPoint` is a plain dataclass with no validation, so a `DataClient` can hand
+    back a sample Pydantic rejects. That raised straight out of the tool with no
+    `data_status` at all — breaking the invariant that every response carries one.
+    `FixtureClient` coerces with float() and cannot trip it; ADR-0002's live client
+    reads an API, which is exactly where a malformed sample comes from.
+    """
+
+    @dataclass(frozen=True)
+    class BadPoint:
+        ts: datetime
+        value: str
+
+    class MalformedClient:
+        def now(self) -> datetime:
+            return datetime.fromisoformat("2026-07-14T08:00:00-07:00")
+
+        def get_metric_series(self, **_: object) -> MetricSeriesResult:
+            return MetricSeriesResult(
+                metrics={"rtt_avg_google": [BadPoint(ts=self.now(), value="not-a-float")]},  # type: ignore[list-item]
+                data_status=DataStatus.ok,
+            )
+
+    response = query_metrics(
+        request_model(
+            site="standstill",
+            metric_group=MetricGroup.latency,
+            start="2026-07-14T00:00:00-07:00",
+            end="2026-07-14T01:00:00-07:00",
+        ),
+        client=MalformedClient(),  # type: ignore[arg-type]
+        mode="live",
+    )
+
+    assert response.data_status is DataStatus.error
+    assert response.error is not None
+    assert response.error.error_type == "internal_error"
+    assert response.error.retryable is False
+    # The validation detail is the operator's, not the model's.
+    assert "not-a-float" not in response.error.message
