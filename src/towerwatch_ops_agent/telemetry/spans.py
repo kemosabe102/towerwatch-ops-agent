@@ -1,11 +1,21 @@
 """One span per tool call (`docs/design/09-observability-spans.md`).
 
-The no-secrets invariant is enforced structurally, not by review. `tool_span` never
-receives a request or response object — only the primitives a caller writes into a
-`SpanMetrics` TypedDict whose keys are fixed at type-check time. There is no code path
-by which a payload value reaches `set_attribute`, so leaking is impossible rather than
-merely filtered. A filter would need maintaining forever as new fields appear; this
-needs nothing maintained.
+The no-secrets invariant is closed at type-check time rather than by a runtime filter.
+`tool_span` never receives a request or response object — only the primitives a caller
+writes into a `SpanMetrics` TypedDict whose keys pyright fixes. A filter would need
+maintaining forever as new fields appear; a closed key set needs nothing maintained.
+
+Two honest limits on that, worth knowing before trusting it:
+
+- TypedDict keys are erased at runtime, so the control is pyright in CI, not the
+  interpreter. A `cast(SpanMetrics, ...)` or a `# type: ignore[literal-required]` at an
+  assignment site defeats it in one line that no other tooling flags. Treat either as a
+  red flag in review here specifically.
+- It covers the metrics dict only. `site`, `task_id`, `session_id` and `model` are
+  plain `str | None` parameters written verbatim. `site` is safe by construction — it
+  comes from a closed enum — but nothing constrains the other three, and the span
+  schema means them as opaque correlation ids. Whatever populates them in Phase 2 owes
+  that check; this module cannot make it for them.
 """
 
 from __future__ import annotations
