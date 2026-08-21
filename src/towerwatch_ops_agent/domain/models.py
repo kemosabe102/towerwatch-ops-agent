@@ -24,7 +24,6 @@ from enum import Enum, StrEnum
 # model on every call — 29% of the request schema spent telling a future *code author*
 # not to refactor. `test_enum_docstrings_stay_out_of_the_schema` pins that.
 class MetricGroup(StrEnum):
-
     latency = "latency"
     throughput = "throughput"
     dns = "dns"
@@ -49,7 +48,6 @@ class MetricGroup(StrEnum):
 # model is taught these semantics by the `data_status` field description in
 # `query_metrics.py`, which is written for it. This note is for maintainers.
 class DataStatus(StrEnum):
-
     ok = "ok"
     empty_window = "empty_window"
     not_collected = "not_collected"

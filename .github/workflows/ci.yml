@@ -1,0 +1,55 @@
+# Every PR in the stack must be green on its own branch, not just at the tip.
+#
+# This exists because it caught a real defect: PR #3's telemetry tests imported the
+# tool layer from PR #4, so the branch was red when checked out alone and nobody
+# noticed — the suite only passed at the top of the stack. A reviewer opening that
+# PR would have seen a collection error. GitHub checks out the PR head, so each
+# stacked PR is gated in isolation here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # pyproject.toml is the single source of truth for deps and tooling config,
+      # so the version floor is read from there rather than pinned twice.
+      - name: Set up Python
+        run: uv python install
+
+      - name: Sync
+        run: uv sync --all-extras
+
+      # Lint and typecheck run before tests and do not short-circuit each other:
+      # a type error and a failing test are independent findings, and seeing only
+      # the first one costs a round trip.
+      - name: Lint
+        if: '!cancelled()'
+        run: uv run ruff check --output-format=github .
+
+      - name: Format
+        if: '!cancelled()'
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        if: '!cancelled()'
+        run: uv run pyright
+
+      - name: Test
+        if: '!cancelled()'
+        run: uv run pytest -q
