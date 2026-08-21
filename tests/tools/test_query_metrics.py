@@ -9,10 +9,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from towerwatch_ops_agent.domain.fixture_client import FixtureClient
+from towerwatch_ops_agent.domain.fixture_client import FixtureClient, _encode_page_token
 from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup, build_site_enum
 from towerwatch_ops_agent.tools import query_metrics as query_metrics_module
-from towerwatch_ops_agent.tools.query_metrics import build_request_model, query_metrics
+from towerwatch_ops_agent.tools.query_metrics import (
+    _error_response,
+    build_request_model,
+    query_metrics,
+)
 
 SRC = Path(query_metrics_module.__file__)
 
@@ -178,3 +182,66 @@ def test_response_timestamps_keep_their_offset(
     first = response.series["rtt_avg_google"][0]
     assert first.ts.tzinfo is not None
     assert first.ts == datetime.fromisoformat("2026-07-14T00:00:00-07:00")
+
+
+def test_internal_errors_do_not_leak_server_internals_to_the_model(
+    fixture_client: FixtureClient,
+) -> None:
+    """Regression: the envelope interpolated the raw exception into `message`.
+
+    `str(exc)` on an arbitrary failure carries whatever the raising code put there — a
+    FileNotFoundError names the server's filesystem path. That message goes into the
+    tool result the model reads, so it violated the binding invariant directly. The
+    class survives (a model needs to know retrying will not help); the details do not.
+    """
+    leaky = FileNotFoundError(
+        2, "No such file or directory", "/nonexistent/secret-internal-dir/creds.json"
+    )
+    response = _error_response(leaky)
+
+    assert "secret-internal-dir" in str(leaky)  # the message really did carry the path
+    assert response.error is not None
+    assert response.error.error_type == "internal_error"
+    assert response.error.retryable is False
+    assert "secret-internal-dir" not in response.error.message
+    assert "creds.json" not in response.error.message
+    assert "FileNotFoundError" in response.error.message
+
+
+def test_a_stale_page_token_is_told_to_drop_the_token(
+    request_model, fixture_client: FixtureClient
+) -> None:
+    """Regression: it was told to "correct the window or step", which would not help.
+
+    The error contract exists so a miss is self-correcting in one turn. Advice that
+    contradicts the message beside it costs the model a turn and may cost it several.
+    """
+    response = _call(
+        request_model,
+        fixture_client,
+        step="10m",
+        page_size=4,
+        page_token=_encode_page_token(9999),
+    )
+
+    assert response.data_status is DataStatus.error
+    assert response.error is not None
+    assert response.error.retryable is True
+    next_call = response.error.suggested_next_call or ""
+    assert "page_token" in next_call
+    assert "window" not in next_call
+
+
+def test_every_request_field_documents_an_example(fixture_client: FixtureClient) -> None:
+    """A Phase 1 acceptance criterion: constraints and an example in every input field.
+
+    Asserted rather than eyeballed, because a new field added without one is exactly
+    the kind of omission a reviewer skims past.
+    """
+    model = build_request_model(build_site_enum(fixture_client.sites))
+    missing = [
+        name
+        for name, field in model.model_fields.items()
+        if "example" not in (field.description or "").lower()
+    ]
+    assert not missing, f"Request fields with no example: {missing}"

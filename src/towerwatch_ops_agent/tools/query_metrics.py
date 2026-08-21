@@ -6,6 +6,7 @@ over; performs no interpretation. Def-token target: 220.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -16,6 +17,8 @@ from towerwatch_ops_agent.domain.models import DataStatus, MetricGroup
 from towerwatch_ops_agent.domain.protocol import DataClient, UnknownMetricError
 from towerwatch_ops_agent.domain.windows import resolve_window
 from towerwatch_ops_agent.telemetry.spans import tool_span
+
+logger = logging.getLogger(__name__)
 
 TOOL_NAME = "towerwatch_query_metrics"
 
@@ -116,10 +119,17 @@ def build_request_model(site_enum: type[Enum]) -> type[BaseModel]:
             description="Downsample interval; omit to scale with range. Example: '15m'",
         )
         page_size: int = Field(
-            default=500, ge=1, le=5000, description="Max points per metric per page."
+            default=500,
+            ge=1,
+            le=5000,
+            description="Max points per metric per page. Example: 500",
         )
         page_token: str | None = Field(
-            default=None, description="Continuation token from a truncated response."
+            default=None,
+            description=(
+                "Continuation token from a truncated response; omit on a first call. "
+                "Example: the next_page_token value returned by the previous call"
+            ),
         )
 
         @model_validator(mode="after")
@@ -196,16 +206,39 @@ def _error_response(exc: Exception) -> QueryMetricsResponse:
             retryable=True,
         )
     elif isinstance(exc, ValueError):
+        # The advice has to match the failure. A stale page_token is fixed by
+        # dropping the token, not by "correcting the window or step" — a generic line
+        # there actively contradicts the message beside it, and the error contract
+        # exists so a miss is self-correcting in one turn.
+        message = str(exc)
+        if "page_token" in message:
+            next_call = "Re-issue the same request with no page_token to start over."
+        elif "step" in message:
+            next_call = "Retry with a step like '60s', '15m', '1h', or omit it entirely."
+        else:
+            next_call = (
+                "Correct the window (start must be before end, and not in the future) and retry."
+            )
         error = ToolError(
             error_type="invalid_request",
-            message=str(exc),
-            suggested_next_call="Correct the window or step and retry.",
+            message=message,
+            suggested_next_call=next_call,
             retryable=True,
         )
     else:
+        # The exception class, never its message. `str(exc)` on an arbitrary failure
+        # carries whatever the raising code put there — a FileNotFoundError names the
+        # server's filesystem path, and the binding invariant is that internals never
+        # appear in a tool result. The class is enough for a model to know retrying
+        # will not help; the details belong in the operator's logs and on the span's
+        # `tool.error_type`.
+        logger.exception("Unhandled error in %s", TOOL_NAME)
         error = ToolError(
             error_type="internal_error",
-            message=f"{type(exc).__name__}: {exc}",
+            message=(
+                f"The server failed while handling this request ({type(exc).__name__}). "
+                "This is not a problem with your request and retrying will not help."
+            ),
             retryable=False,
         )
     return QueryMetricsResponse(data_status=DataStatus.error, error=error)
