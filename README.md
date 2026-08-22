@@ -16,7 +16,7 @@ retrieval**. One repo, one coherent story:
 > - **Transport:** stdio first; stateless streamable HTTP as a stretch goal.
 > - **Observability:** OpenTelemetry from the first tool call, into a Prometheus/Grafana stack.
 > - **Tool surface:** seven tools — `query_metrics`, `analyze_window`, `compare`, `query_log_events`, `get_monitor_status`, `get_runbook`, `run_speedtest`. Contracts in [`docs/design/`](docs/design/).
-> - **Status:** 🟡 **Contracts locked, implementation not started** — requirements, tool contracts, and decisions are committed; no code yet. See [Status](#status).
+> - **Status:** 🟡 **Phase 1 in progress** — the server runs and one of seven tools is built; no Phase 1 acceptance criterion is met yet. See [Status](#status).
 
 ---
 
@@ -64,19 +64,20 @@ towerwatch-ops-agent/
 ├── docs/
 │   ├── architecture.md             # intended shape (stub — not built yet)
 │   ├── specs/                      # the governing build plan + 4 requirement specs
-│   ├── design/                     # locked tool contracts (00–09) — authoritative
+│   ├── design/                     # locked tool contracts (00–11) — authoritative
 │   ├── adr/                        # architecture decision records
 │   └── production-path.md          # personal-scale choices vs. enterprise needs
-├── src/towerwatch_ops_agent/       # package (marker only this pass)
-└── tests/                          # pytest suite (marker only this pass)
+├── src/towerwatch_ops_agent/       # server, config, domain/, tools/, telemetry/
+├── tests/                          # pytest suite — 95 tests
+├── fixtures/stub/                  # hand-authored stub corpus (not the real one)
+└── RATIONALE.md                    # deliberate choices that read as defects
 ```
 
 ---
 
 ## Quick start
 
-> Nothing runs yet — this is a scaffold. These are the intended mechanics once Phase 1
-> lands, recorded here so the toolchain is unambiguous.
+> The server runs and serves `query_metrics`. The other six tools are not built yet.
 
 ```bash
 # From repo root. uv manages the environment and lockfile.
@@ -94,38 +95,49 @@ npx @modelcontextprotocol/inspector uv run python -m towerwatch_ops_agent
 
 ## Status
 
-🟡 **Contracts locked, implementation not started.** Requirements, tool contracts, and
-decisions are complete and committed; no code has been written yet. Present:
+🟡 **Phase 1 in progress.** The MCP server runs over stdio and serves
+`query_metrics` end to end against a fixture. **None of Phase 1's five acceptance
+criteria are met yet** — see [`spec-phase1-mcp-server.md`](docs/specs/spec-phase1-mcp-server.md)
+for the gate list.
+
+**Built and running:**
 
 - [x] Directory skeleton, `pyproject.toml`, `.gitignore`, MIT license
 - [x] README, `CLAUDE.md` (with binding invariants), architecture stub
 - [x] The build plan and all four requirement specs in [`docs/specs/`](docs/specs/)
-- [x] **Locked tool contracts** — [`docs/design/`](docs/design/) 00–09: conventions, seven
-      tool docs, skills interfaces, span schema
-- [x] **Fixture manifest + eval design** — [`10-fixture-manifest.md`](docs/design/10-fixture-manifest.md)
-      (curated-export model, provenance, frozen clock, answer key) and
-      [`11-eval-design.md`](docs/design/11-eval-design.md) (positive-control pairing,
-      answer-key timing)
+- [x] **Locked tool contracts** — [`docs/design/`](docs/design/) 00–11: conventions, seven
+      tool docs, skills interfaces, span schema, fixture manifest, eval design
 - [x] **ADRs** — [`docs/adr/`](docs/adr/), the decisions behind the tool surface
-- [x] PR template requesting verification receipts
+- [x] **MCP server + composition root** — `server.py`, `config.py`, stdio transport
+- [x] **`query_metrics`** — 1 of 7 tools, with the `data_status` envelope enforced
+- [x] **`FixtureClient` + manifest loader** — ADR-0002's dual-mode seam, fixture side only
+- [x] **Span instrumentation** — one span per tool call, secrets structurally excluded
+- [x] **CI workflow** — ruff, format, pyright, pytest on every PR branch head
+- [x] `RATIONALE.md` — deliberate choices a reviewer would otherwise report as defects
 
 **Deferred** (not yet built — see `CLAUDE.md` for the phase gates):
 
-- [ ] Phase 1 — MCP server, tools, SLIs, cross-model bench
+- [ ] **Six remaining tools** — `analyze_window`, `compare`, `query_log_events`,
+      `get_monitor_status`, `get_runbook`, `run_speedtest`
+- [ ] **`GrafanaCloudClient`** — the live half of the `DataClient` Protocol
+- [ ] **Curated fixture corpus** — `fixtures/stub/` is a two-window hand-authored stub
+      proving the format only, not the real deterministic corpus
+- [ ] **OTel exporter + SLI dashboard** — spans are emitted but go nowhere; no
+      `MeterProvider`, so no duration histograms
+- [ ] `def_tokens.md` — the tool-def token budget measurement (script exists, never run)
+- [ ] `bench.md` — cross-model cost/latency bench
 - [ ] Phase 2 — eval harness + CI + seeded-regression showpiece
 - [ ] Phase 3 — model router + semantic tool retrieval
-- [ ] Curated fixture corpus — the deterministic data behind tests and evals
 - [ ] In-repo skills under `.claude/skills/` — `diagnose-rca`, `evidence-pack`, plus the
       golden-path skills (`add-tool`, `run-evals`) created when first walked manually
 - [ ] Measured onboarding eval (`docs/onboarding-eval.md`) — first run after Phase 1
-- [ ] `def_tokens.md` — the tool-def token budget measurement (lands with Phase 1)
-- [ ] CI workflow (`.github/workflows/`) — lands with Phase 1, when there's code to lint
 
 ---
 
 ## For AI assistants
 
 If you're an agent working in this repo, read **[`CLAUDE.md`](CLAUDE.md)** first. It
-carries the phase sequence, the stateless-gates working standard, and — important while
-the repo is a scaffold — an explicit map of what exists versus what is still a stub, so
-you don't reason about code that isn't there yet.
+carries the phase sequence, the stateless-gates working standard, and an explicit map of
+what exists versus what is still a stub, so you don't reason about code that isn't there
+yet. `RATIONALE.md` records the deliberate choices that read as defects on sight — read it
+before reporting one.

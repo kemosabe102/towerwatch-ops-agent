@@ -15,9 +15,18 @@ back here for the agent-only notes.
 
 ## Repo state — read before reasoning about code
 
-**There is no implementation yet.** `src/` and `tests/` contain package markers only. Do
-not reference, import, or assume the existence of any tool, module, function, or eval that
-the specs describe as *to be built* — none of it exists on disk yet.
+**Implementation is partial — check the tree before assuming.** The server, config,
+domain, and telemetry layers exist, and `query_metrics` is the only tool built of the
+seven in `docs/design/`. Do not reference, import, or assume the existence of any tool,
+module, function, or eval you have not confirmed on disk: the remaining six tools and the
+eval suite are still contract-only.
+
+**`fixtures/stub/` is a stub, not the corpus.** Two hand-authored windows proving the
+format and the code path. Any number read from it is illustrative, never evidence.
+
+**[`RATIONALE.md`](RATIONALE.md) records choices that read as defects.** Append-only, one
+dated entry per deliberate decision a reviewer would otherwise flag. Check it before
+reporting a finding, and add an entry when a refuted finding would recur.
 
 **What does exist is the contract layer.** When asked to build, work from
 [`docs/design/`](docs/design/) (the locked tool contracts) and [`docs/adr/`](docs/adr/)
